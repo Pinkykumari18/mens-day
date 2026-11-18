@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Men's Day QR generator</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#0a1022;color:#f5f1e6}
+  header{padding:24px 20px;max-width:900px;margin:0 auto}
+  h1{margin:0 0 6px;font-size:24px;color:#fff1c1}
+  p.sub{margin:0 0 18px;color:#cfd6ee;font-size:14px;line-height:1.5}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input[type=url]{flex:1;min-width:260px;padding:12px 14px;border-radius:10px;border:1px solid #3a4a80;background:#121c3d;color:#fff;font-size:15px}
+  button{padding:12px 18px;border-radius:10px;border:0;background:#e8c468;color:#1a1405;font-weight:600;font-size:14px;cursor:pointer}
+  button.alt{background:transparent;color:#e8c468;border:1px solid #e8c468}
+  button:disabled{opacity:.5;cursor:wait}
+  #msg{margin-top:12px;font-size:13px;color:#7bf1a8;min-height:18px}
+  #msg.err{color:#ff8a9a}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;max-width:900px;margin:8px auto 40px;padding:0 20px}
+  .qcard{background:#fff;color:#0a1022;border-radius:16px;padding:16px 14px 14px;text-align:center;border:3px solid #e8c468}
+  .qcard h3{margin:0;font-size:18px}
+  .qcard small{display:block;color:#6b5a2a;margin:2px 0 8px;font-size:12px}
+  .qcard img{width:100%;display:block;border-radius:6px}
+  .qcard .scan{margin-top:8px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#6b5a2a}
+  .qcard a{display:inline-block;margin-top:8px;font-size:12px;color:#1b2a5c}
+  @media print{
+    body{background:#fff}
+    header{display:none}
+    .grid{grid-template-columns:repeat(4,1fr);gap:8mm;max-width:none;padding:0;margin:0}
+    .qcard{break-inside:avoid;border:2px solid #000}
+    .qcard a{display:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Men's Day QR generator</h1>
+  <p class="sub">1. Deploy the site on Vercel.&nbsp; 2. Paste its address below (example: https://my-mens-day.vercel.app).&nbsp; 3. Press Generate. You get one QR code per person from <code>data.js</code>. Download them all as a ZIP, or print this page.</p>
+  <div class="row">
+    <input id="base" type="url" placeholder="https://your-project.vercel.app" autocomplete="off">
+    <button id="go">Generate QR codes</button>
+    <button id="zip" class="alt" disabled>Download all (ZIP)</button>
+    <button id="print" class="alt">Print</button>
+  </div>
+  <div id="msg"></div>
+</header>
+<div class="grid" id="grid"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="../data.js"></script>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var made = [];
+  var saved = '';
+  try { saved = localStorage.getItem('mensday_base') || ''; } catch (e) {}
+  $('#base').value = saved;
+
+  function say(t, err) { var m = $('#msg'); m.textContent = t; m.className = err ? 'err' : ''; }
+  function clean(u) { return u.trim().replace(/\/+$/, '').replace(/\/index\.html$/i, ''); }
+
+  async function generate() {
+    var base = clean($('#base').value);
+    if (!/^https?:\/\//i.test(base)) { say('Enter your full site address, starting with https://', true); return; }
+    if (typeof QRCode === 'undefined') { say('QR library could not load. Check your internet connection and refresh.', true); return; }
+    if (!window.MEN || !window.MEN.length) { say('No people found in data.js', true); return; }
+    try { localStorage.setItem('mensday_base', base); } catch (e) {}
+
+    $('#go').disabled = true; $('#zip').disabled = true; say('Generating...');
+    var grid = $('#grid'); grid.innerHTML = ''; made = [];
+
+    for (var i = 0; i < window.MEN.length; i++) {
+      var m = window.MEN[i];
+      var link = base + '/?id=' + encodeURIComponent(m.id);
+      var url = await QRCode.toDataURL(link, {
+        width: 700, margin: 2, errorCorrectionLevel: 'H',
+        color: { dark: '#0a1022', light: '#ffffff' }
+      });
+      made.push({ id: m.id, name: m.name, url: url });
+
+      var card = document.createElement('div'); card.className = 'qcard';
+      var h = document.createElement('h3'); h.textContent = m.name;
+      var s = document.createElement('small'); s.textContent = m.tag || '';
+      var img = document.createElement('img'); img.src = url; img.alt = 'QR code for ' + m.name;
+      var sc = document.createElement('div'); sc.className = 'scan'; sc.textContent = 'Scan for your surprise';
+      var a = document.createElement('a'); a.href = url; a.download = m.id + '-' + m.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.png'; a.textContent = 'Download PNG';
+      var t = document.createElement('a'); t.href = link; t.target = '_blank'; t.rel = 'noopener'; t.textContent = ' Test link'; t.style.marginLeft = '10px';
+      card.append(h, s, img, sc, a, t);
+      grid.appendChild(card);
+    }
+    $('#go').disabled = false; $('#zip').disabled = false;
+    say('Done. ' + made.length + ' QR codes ready. Scan one with your phone to test it.');
+  }
+
+  async function zip() {
+    if (typeof JSZip === 'undefined') { say('ZIP library could not load.', true); return; }
+    var z = new JSZip();
+    made.forEach(function (q) {
+      z.file(q.id + '-' + q.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.png', q.url.split(',')[1], { base64: true });
+    });
+    var blob = await z.generateAsync({ type: 'blob' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'mens-day-qr-codes.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+  }
+
+  $('#go').addEventListener('click', generate);
+  $('#zip').addEventListener('click', zip);
+  $('#print').addEventListener('click', function () { window.print(); });
+  $('#base').addEventListener('keydown', function (e) { if (e.key === 'Enter') generate(); });
+})();
+</script>
+</body>
+</html>
